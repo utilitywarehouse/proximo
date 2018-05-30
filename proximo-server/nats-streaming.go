@@ -18,7 +18,7 @@ type natsStreamingHandler struct {
 	nc        *nats.Conn
 }
 
-func NewNatsStreamingHandler(url, clusterID string) (*natsStreamingHandler, error) {
+func newNatsStreamingHandler(url, clusterID string) (*natsStreamingHandler, error) {
 	nc, err := nats.Connect(url, nats.Name("proximo-nats-streaming-"+generateID()))
 	if err != nil {
 		return nil, err
