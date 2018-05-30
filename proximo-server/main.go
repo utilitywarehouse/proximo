@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -57,6 +58,7 @@ func main() {
 	cr := &CommandReceiver{
 		counters: counters,
 	}
+	var closer io.Closer
 	app.Command("kafka", "Use kafka backend", func(cmd *cli.Cmd) {
 		brokers := *cmd.Strings(cli.StringsOpt{
 			Name: "brokers",
@@ -100,10 +102,12 @@ func main() {
 			EnvVar: "PROXIMO_NATS_CLUSTER_ID",
 		})
 		cmd.Action = func() {
-			cr.handler = &natsStreamingHandler{
-				url:       *url,
-				clusterID: *cid,
+			nh, err := NewNatsStreamingHandler(*url, *cid)
+			if err != nil {
+				log.Fatal(err)
 			}
+			cr.handler = nh
+			closer = nh
 		}
 	})
 	app.Command("nats", "Use NATS backend", func(cmd *cli.Cmd) {
@@ -129,6 +133,11 @@ func main() {
 		cr.ServeStatus(*probePort)
 		if err := cr.Serve("tcp", *port); err != nil {
 			log.Fatal(err)
+		}
+		if closer != nil {
+			if err := closer.Close(); err != nil {
+				log.Printf("failed to close connection: %s", err.Error())
+			}
 		}
 	}
 	if err := app.Run(os.Args); err != nil {
