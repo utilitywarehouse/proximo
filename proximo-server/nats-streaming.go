@@ -19,12 +19,11 @@ type natsStreamingHandler struct {
 }
 
 func (h *natsStreamingHandler) HandleConsume(ctx context.Context, consumer, topic string, forClient chan<- *Message, confirmRequest <-chan *Confirmation) error {
-
 	conn, err := stan.Connect(h.clusterID, consumer+generateID(), stan.NatsURL(h.url))
+	defer conn.Close()
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
 
 	ackQueue := make(chan *stan.Msg, 32) // TODO: configurable buffer
 
@@ -97,8 +96,8 @@ func (h *natsStreamingHandler) HandleConsume(ctx context.Context, consumer, topi
 }
 
 func (h *natsStreamingHandler) HandleProduce(ctx context.Context, topic string, forClient chan<- *Confirmation, messages <-chan *Message) error {
-
 	conn, err := stan.Connect(h.clusterID, generateID(), stan.NatsURL(h.url))
+	defer conn.Close()
 	if err != nil {
 		return err
 	}
@@ -123,14 +122,12 @@ func (h *natsStreamingHandler) HandleProduce(ctx context.Context, topic string, 
 
 func (h *natsStreamingHandler) Status() (bool, error) {
 	conn, err := stan.Connect(h.clusterID, generateID(), stan.NatsURL(h.url))
+	defer conn.Close()
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to connect to %s", h.url)
 	}
 	if conn.NatsConn().Status() != nats.CONNECTED {
 		return false, errors.New("connection status different than CONNECTED")
-	}
-	if err := conn.Close(); err != nil {
-		return false, errors.Wrapf(err, "failed to close connection to %s", h.url)
 	}
 	return true, nil
 }

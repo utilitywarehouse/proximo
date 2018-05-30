@@ -12,12 +12,11 @@ type natsHandler struct {
 }
 
 func (h *natsHandler) HandleConsume(ctx context.Context, consumer, topic string, forClient chan<- *Message, confirmRequest <-chan *Confirmation) error {
-
 	conn, err := nats.Connect(h.url)
+	defer conn.Close()
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
 
 	ch := make(chan *nats.Msg, 64) //TODO: make 64 configurable at startup time
 	sub, err := conn.ChanSubscribe(topic, ch)
@@ -41,8 +40,8 @@ func (h *natsHandler) HandleConsume(ctx context.Context, consumer, topic string,
 }
 
 func (h *natsHandler) HandleProduce(ctx context.Context, topic string, forClient chan<- *Confirmation, messages <-chan *Message) error {
-
 	conn, err := nats.Connect(h.url)
+	defer conn.Close()
 	if err != nil {
 		return err
 	}
@@ -67,6 +66,7 @@ func (h *natsHandler) HandleProduce(ctx context.Context, topic string, forClient
 
 func (h *natsHandler) Status() (bool, error) {
 	conn, err := nats.Connect(h.url)
+	defer conn.Close()
 	if err != nil {
 		return false, errors.Wrapf(err, "failed to connect to %s", h.url)
 	}
