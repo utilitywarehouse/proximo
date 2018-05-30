@@ -104,7 +104,7 @@ func main() {
 		cmd.Action = func() {
 			nh, err := NewNatsStreamingHandler(*url, *cid)
 			if err != nil {
-				log.Fatal(err)
+				log.Panic(err)
 			}
 			cr.handler = nh
 			closer = nh
