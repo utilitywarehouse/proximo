@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 
 	"github.com/gorilla/mux"
@@ -161,6 +162,11 @@ func (r *CommandReceiver) ServeStatus(port int) {
 
 	probe := router.PathPrefix("/__/").Subrouter()
 	probe.Methods(http.MethodGet).Handler(op.NewHandler(getOpStatus(r.handler)))
+	router.Methods(http.MethodGet).PathPrefix("/debug/pprof/").HandlerFunc(pprof.Index)
+	router.Methods(http.MethodGet).PathPrefix("/debug/pprof/cmdline").HandlerFunc(pprof.Cmdline)
+	router.Methods(http.MethodGet).PathPrefix("/debug/pprof/profile").HandlerFunc(pprof.Profile)
+	router.Methods(http.MethodGet).PathPrefix("/debug/pprof/symbol").HandlerFunc(pprof.Symbol)
+	router.Methods(http.MethodGet).PathPrefix("/debug/pprof/trace").HandlerFunc(pprof.Trace)
 
 	server := http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
