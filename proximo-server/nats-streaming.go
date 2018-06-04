@@ -16,14 +16,15 @@ import (
 type natsStreamingHandler struct {
 	clusterID string
 	nc        *nats.Conn
+	counters  counters
 }
 
-func newNatsStreamingHandler(url, clusterID string) (*natsStreamingHandler, error) {
+func newNatsStreamingHandler(url, clusterID string, counters counters) (*natsStreamingHandler, error) {
 	nc, err := nats.Connect(url, nats.Name("proximo-nats-streaming-"+generateID()))
 	if err != nil {
 		return nil, err
 	}
-	return &natsStreamingHandler{nc: nc, clusterID: clusterID}, nil
+	return &natsStreamingHandler{nc: nc, clusterID: clusterID, counters: counters}, nil
 }
 
 func (h *natsStreamingHandler) Close() error {
@@ -65,6 +66,7 @@ func (h *natsStreamingHandler) HandleConsume(ctx context.Context, consumer, topi
 						ackErrors <- fmt.Errorf("failed to ack message with NATS: %v.", err.Error())
 						return
 					}
+					h.counters.SourcedMessagesCounter.WithLabelValues(topic).Inc()
 				case <-ctx.Done():
 					return
 				}
@@ -129,6 +131,7 @@ func (h *natsStreamingHandler) HandleProduce(ctx context.Context, topic string, 
 			case <-ctx.Done():
 				return conn.Close()
 			}
+			h.counters.SinkMessagesCounter.WithLabelValues(topic).Inc()
 		}
 	}
 }

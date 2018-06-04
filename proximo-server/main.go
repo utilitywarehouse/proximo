@@ -102,7 +102,7 @@ func main() {
 			EnvVar: "PROXIMO_NATS_CLUSTER_ID",
 		})
 		cmd.Action = func() {
-			nh, err := newNatsStreamingHandler(*url, *cid)
+			nh, err := newNatsStreamingHandler(*url, *cid, counters)
 			if err != nil {
 				log.Panic(err)
 			}
