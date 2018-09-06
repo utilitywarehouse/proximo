@@ -7,12 +7,14 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/jawher/mow.cli"
 	"github.com/pkg/errors"
 	"github.com/utilitywarehouse/go-operational/op"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 )
 
 var gitHash string
@@ -155,7 +157,11 @@ func (r *CommandReceiver) Serve(connType string, port int) error {
 	if err != nil {
 		errors.Wrap(err, "failed to listen")
 	}
-	var opts []grpc.ServerOption
+	opts := []grpc.ServerOption{
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time: 5 * time.Minute,
+		}),
+	}
 	grpcServer := grpc.NewServer(opts...)
 	RegisterMessageSourceServer(grpcServer, &server{r.handler, r.counters})
 	RegisterMessageSinkServer(grpcServer, &server{r.handler, r.counters})
