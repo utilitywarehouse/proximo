@@ -110,19 +110,7 @@ func main() {
 			closer = nh
 		}
 	})
-	app.Command("nats", "Use NATS backend", func(cmd *cli.Cmd) {
-		url := cmd.String(cli.StringOpt{
-			Name:   "url",
-			Value:  "nats://localhost:4222",
-			Desc:   "NATS url",
-			EnvVar: "PROXIMO_NATS_URL",
-		})
-		cmd.Action = func() {
-			cr.handler = &natsHandler{
-				url: *url,
-			}
-		}
-	})
+
 	app.Command("mem", "Use in-memory testing backend", func(cmd *cli.Cmd) {
 		cmd.Action = func() {
 			cr.handler = newMemHandler()
