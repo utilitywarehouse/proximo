@@ -5,14 +5,13 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
-	"errors"
 	"io"
 	"log"
 	"sync"
 
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/grpclog"
 )
 
 func ConsumeContext(ctx context.Context, proximoAddress string, consumer string, topic string, f func(*Message) error) error {
@@ -25,25 +24,25 @@ func ConsumeContextTLS(ctx context.Context, proximoAddress string, consumer stri
 
 func consumeContext(ctx context.Context, proximoAddress string, consumer string, topic string, f func(*Message) error, opts ...grpc.DialOption) error {
 
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
 	conn, err := grpc.DialContext(ctx, proximoAddress, opts...)
 	if err != nil {
-		grpclog.Fatalf("fail to dial: %v", err)
+		return errors.Wrapf(err, "fail to dial %s", proximoAddress)
 	}
 	defer conn.Close()
 	client := NewMessageSourceClient(conn)
 
 	stream, err := client.Consume(ctx)
 	if err != nil {
-		grpclog.Fatalf("%v.Consume(_) = _, %v", client, err)
+		return errors.Wrap(err, "fail to consume")
 	}
 
 	defer stream.CloseSend()
 
 	handled := make(chan string)
 	errs := make(chan error, 2)
-
-	var wg sync.WaitGroup
-	defer wg.Wait()
 
 	ins := make(chan *Message, 16) // TODO: make buffer size configurable?
 
@@ -176,7 +175,13 @@ type ProducerConn struct {
 func (p *ProducerConn) Produce(message []byte) error {
 	err := make(chan error)
 	r := req{message, err}
-	p.reqs <- r
+	select {
+	case p.reqs <- r:
+	case e := <-p.errs:
+		return e
+	case <-p.ctx.Done():
+		return p.ctx.Err()
+	}
 	var e error
 	select {
 	case e = <-err:
