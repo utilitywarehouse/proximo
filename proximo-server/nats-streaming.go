@@ -32,9 +32,9 @@ func (h *natsStreamingHandler) Close() error {
 	return nil
 }
 
-func (h *natsStreamingHandler) HandleConsume(ctx context.Context, consumer, topic string, forClient chan<- *Message, confirmRequest <-chan *Confirmation) error {
+func (h *natsStreamingHandler) HandleConsume(ctx context.Context, conf consumerConfig, forClient chan<- *Message, confirmRequest <-chan *Confirmation) error {
 
-	conn, err := stan.Connect(h.clusterID, consumer+generateID(), stan.NatsConn(h.nc))
+	conn, err := stan.Connect(h.clusterID, conf.consumer+generateID(), stan.NatsConn(h.nc))
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func (h *natsStreamingHandler) HandleConsume(ctx context.Context, consumer, topi
 						ackErrors <- fmt.Errorf("failed to ack message with NATS: %v.", err.Error())
 						return
 					}
-					h.counters.SourcedMessagesCounter.WithLabelValues(topic).Inc()
+					h.counters.SourcedMessagesCounter.WithLabelValues(conf.topic).Inc()
 				case <-ctx.Done():
 					return
 				}
@@ -86,11 +86,11 @@ func (h *natsStreamingHandler) HandleConsume(ctx context.Context, consumer, topi
 	}
 
 	_, err = conn.QueueSubscribe(
-		topic,
-		consumer,
+		conf.topic,
+		conf.consumer,
 		f,
 		stan.StartAt(pb.StartPosition_First),
-		stan.DurableName(consumer),
+		stan.DurableName(conf.consumer),
 		stan.SetManualAckMode(),
 		stan.AckWait(60*time.Second),
 	)
@@ -110,9 +110,9 @@ func (h *natsStreamingHandler) HandleConsume(ctx context.Context, consumer, topi
 
 }
 
-func (h *natsStreamingHandler) HandleProduce(ctx context.Context, topic string, forClient chan<- *Confirmation, messages <-chan *Message) error {
+func (h *natsStreamingHandler) HandleProduce(ctx context.Context, conf producerConfig, forClient chan<- *Confirmation, messages <-chan *Message) error {
+
 	conn, err := stan.Connect(h.clusterID, generateID(), stan.NatsConn(h.nc))
-	defer conn.Close()
 	if err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func (h *natsStreamingHandler) HandleProduce(ctx context.Context, topic string, 
 		case <-ctx.Done():
 			return conn.Close()
 		case msg := <-messages:
-			err := conn.Publish(topic, msg.GetData())
+			err := conn.Publish(conf.topic, msg.GetData())
 			if err != nil {
 				return err
 			}
@@ -131,7 +131,7 @@ func (h *natsStreamingHandler) HandleProduce(ctx context.Context, topic string, 
 			case <-ctx.Done():
 				return conn.Close()
 			}
-			h.counters.SinkMessagesCounter.WithLabelValues(topic).Inc()
+			h.counters.SinkMessagesCounter.WithLabelValues(conf.topic).Inc()
 		}
 	}
 }
