@@ -4,6 +4,8 @@ Proximo is a proxy for multiple different publish-subscribe queuing systems.
 It is based on a GRPC interface definition, making it easy to create new client libraries.
 It already supports a number of popular queueing systems, and adding new ones is intended to be simple.
 
+This is a fork of https://github.com/uw-labs/proximo containing uw specific logic.  General development should be done upstream first and then merged here, unless it is uw specific, in which case it should be done in here directly.
+
 ## Goals
 * Expose multiple consumer (fan out) semantics where needed
 
