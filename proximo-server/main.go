@@ -120,8 +120,7 @@ func main() {
 	})
 
 	app.After = func() {
-		cr.ServeStatus(*probePort)
-		if err := cr.Serve("tcp", *port); err != nil {
+		if err := cr.Serve("tcp", *port, *probePort); err != nil {
 			log.Fatal(err)
 		}
 		if closer != nil {
@@ -140,7 +139,9 @@ type CommandReceiver struct {
 	counters counters
 }
 
-func (r *CommandReceiver) Serve(connType string, port int) error {
+func (r *CommandReceiver) Serve(connType string, port int, probePort int) error {
+	r.ServeStatus(probePort)
+
 	lis, err := net.Listen(connType, fmt.Sprintf(":%d", port))
 	if err != nil {
 		errors.Wrap(err, "failed to listen")
