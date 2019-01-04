@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -57,8 +56,6 @@ func main() {
 		EnvVar: "PROXIMO_PROBE_PORT",
 	})
 	counters := NewCounters()
-	var handler handler
-	var closer io.Closer
 	app.Command("kafka", "Use kafka backend", func(cmd *cli.Cmd) {
 		brokers := *cmd.Strings(cli.StringsOpt{
 			Name: "brokers",
@@ -69,9 +66,12 @@ func main() {
 			EnvVar: "PROXIMO_KAFKA_BROKERS",
 		})
 		cmd.Action = func() {
-			handler = &kafkaHandler{
+			handler := &kafkaHandler{
 				brokers:  brokers,
 				counters: counters,
+			}
+			if err := serve(handler, counters, *port, *probePort); err != nil {
+				log.Fatal(err)
 			}
 		}
 	})
@@ -83,8 +83,11 @@ func main() {
 			EnvVar: "PROXIMO_AMQP_ADDRESS",
 		})
 		cmd.Action = func() {
-			handler = &amqpHandler{
+			handler := &amqpHandler{
 				address: *address,
+			}
+			if err := serve(handler, counters, *port, *probePort); err != nil {
+				log.Fatal(err)
 			}
 		}
 	})
@@ -106,27 +109,25 @@ func main() {
 			if err != nil {
 				log.Panic(err)
 			}
-			handler = nh
-			closer = nh
+			handler := nh
+			if err := serve(handler, counters, *port, *probePort); err != nil {
+				log.Fatal(err)
+			}
+			if err := nh.Close(); err != nil {
+				log.Printf("failed to close connection: %s", err.Error())
+			}
 		}
 	})
 
 	app.Command("mem", "Use in-memory testing backend", func(cmd *cli.Cmd) {
 		cmd.Action = func() {
-			handler = newMemHandler()
+			handler := newMemHandler()
+			if err := serve(handler, counters, *port, *probePort); err != nil {
+				log.Fatal(err)
+			}
 		}
 	})
 
-	app.After = func() {
-		if err := serve(handler, counters, *port, *probePort); err != nil {
-			log.Fatal(err)
-		}
-		if closer != nil {
-			if err := closer.Close(); err != nil {
-				log.Printf("failed to close connection: %s", err.Error())
-			}
-		}
-	}
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal("App stopped with error")
 	}
