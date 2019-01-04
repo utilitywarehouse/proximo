@@ -57,9 +57,7 @@ func main() {
 		EnvVar: "PROXIMO_PROBE_PORT",
 	})
 	counters := NewCounters()
-	cr := &CommandReceiver{
-		counters: counters,
-	}
+	var handler handler
 	var closer io.Closer
 	app.Command("kafka", "Use kafka backend", func(cmd *cli.Cmd) {
 		brokers := *cmd.Strings(cli.StringsOpt{
@@ -71,7 +69,7 @@ func main() {
 			EnvVar: "PROXIMO_KAFKA_BROKERS",
 		})
 		cmd.Action = func() {
-			cr.handler = &kafkaHandler{
+			handler = &kafkaHandler{
 				brokers:  brokers,
 				counters: counters,
 			}
@@ -85,7 +83,7 @@ func main() {
 			EnvVar: "PROXIMO_AMQP_ADDRESS",
 		})
 		cmd.Action = func() {
-			cr.handler = &amqpHandler{
+			handler = &amqpHandler{
 				address: *address,
 			}
 		}
@@ -108,19 +106,19 @@ func main() {
 			if err != nil {
 				log.Panic(err)
 			}
-			cr.handler = nh
+			handler = nh
 			closer = nh
 		}
 	})
 
 	app.Command("mem", "Use in-memory testing backend", func(cmd *cli.Cmd) {
 		cmd.Action = func() {
-			cr.handler = newMemHandler()
+			handler = newMemHandler()
 		}
 	})
 
 	app.After = func() {
-		if err := cr.Serve("tcp", *port, *probePort); err != nil {
+		if err := serve(handler, counters, "tcp", *port, *probePort); err != nil {
 			log.Fatal(err)
 		}
 		if closer != nil {
@@ -134,13 +132,8 @@ func main() {
 	}
 }
 
-type CommandReceiver struct {
-	handler  handler
-	counters counters
-}
-
-func (r *CommandReceiver) Serve(connType string, port int, probePort int) error {
-	r.ServeStatus(probePort)
+func serve(handler handler, counters counters, connType string, port int, probePort int) error {
+	serveStatus(handler, probePort)
 
 	lis, err := net.Listen(connType, fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -152,19 +145,19 @@ func (r *CommandReceiver) Serve(connType string, port int, probePort int) error 
 		}),
 	}
 	grpcServer := grpc.NewServer(opts...)
-	RegisterMessageSourceServer(grpcServer, &server{r.handler, r.counters})
-	RegisterMessageSinkServer(grpcServer, &server{r.handler, r.counters})
+	RegisterMessageSourceServer(grpcServer, &server{handler, counters})
+	RegisterMessageSinkServer(grpcServer, &server{handler, counters})
 	if err := grpcServer.Serve(lis); err != nil {
 		return errors.Wrap(err, "failed to serve grpc")
 	}
 	return nil
 }
 
-func (r *CommandReceiver) ServeStatus(port int) {
+func serveStatus(handler handler, port int) {
 	router := mux.NewRouter()
 
 	probe := router.PathPrefix("/__/").Subrouter()
-	probe.Methods(http.MethodGet).Handler(op.NewHandler(getOpStatus(r.handler)))
+	probe.Methods(http.MethodGet).Handler(op.NewHandler(getOpStatus(handler)))
 
 	server := http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
