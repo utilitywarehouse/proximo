@@ -118,7 +118,7 @@ func main() {
 	})
 
 	app.After = func() {
-		if err := serve(handler, counters, "tcp", *port, *probePort); err != nil {
+		if err := serve(handler, counters, *port, *probePort); err != nil {
 			log.Fatal(err)
 		}
 		if closer != nil {
@@ -132,10 +132,10 @@ func main() {
 	}
 }
 
-func serve(handler handler, counters counters, connType string, port int, probePort int) error {
+func serve(handler handler, counters counters, port int, probePort int) error {
 	serveStatus(handler, probePort)
 
-	lis, err := net.Listen(connType, fmt.Sprintf(":%d", port))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		errors.Wrap(err, "failed to listen")
 	}
