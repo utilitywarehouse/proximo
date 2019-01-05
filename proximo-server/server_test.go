@@ -13,7 +13,7 @@ import (
 func TestProduceCloseWithAckPending(t *testing.T) {
 	handler := newMockProduceHandler()
 
-	svr := &server{handler}
+	svr := &server{handler, testCounters}
 
 	tscs := newTestMessageSourceProduceServer()
 
@@ -97,6 +97,10 @@ func (mh *mockProduceHandler) HandleProduce(ctx context.Context, conf producerCo
 
 	<-ctx.Done()
 	return nil
+}
+
+func (mh *mockProduceHandler) Status() (bool, error) {
+	return true, nil
 }
 
 func (mh *mockProduceHandler) loop(forClient chan<- *Confirmation, messages <-chan *Message) {
