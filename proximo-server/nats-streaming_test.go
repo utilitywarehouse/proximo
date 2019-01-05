@@ -7,7 +7,7 @@ import (
 	"time"
 
 	dto "github.com/prometheus/client_model/go"
-	proximoc "github.com/uw-labs/proximo/proximoc-go"
+	proximoc "github.com/utilitywarehouse/proximo/proximoc-go"
 
 	stand "github.com/nats-io/nats-streaming-server/server"
 	stores "github.com/nats-io/nats-streaming-server/stores"
@@ -20,13 +20,12 @@ func TestCounterNatsStreaming(t *testing.T) {
 	s, err := stand.RunServerWithOpts(opts, nil)
 	defer s.Shutdown()
 
-	counters := NewCounters()
 	cr := &CommandReceiver{
-		counters: counters,
+		counters: testCounters,
 	}
 
 	topic := "test"
-	nh, err := newNatsStreamingHandler("nats://localhost:4222", "test-cluster", counters)
+	nh, err := newNatsStreamingHandler("nats://localhost:4222", "test-cluster", testCounters)
 	if err != nil {
 		t.Error(err)
 	}
