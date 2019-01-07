@@ -113,9 +113,6 @@ func main() {
 			if err := serve(handler, counters, *port, *probePort); err != nil {
 				log.Fatal(err)
 			}
-			if err := nh.Close(); err != nil {
-				log.Printf("failed to close connection: %s", err.Error())
-			}
 		}
 	})
 
