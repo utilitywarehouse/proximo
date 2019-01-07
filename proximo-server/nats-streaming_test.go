@@ -20,21 +20,19 @@ func TestCounterNatsStreaming(t *testing.T) {
 	s, err := stand.RunServerWithOpts(opts, nil)
 	defer s.Shutdown()
 
-	cr := &CommandReceiver{
-		counters: testCounters,
-	}
-
 	topic := "test"
 	nh, err := newNatsStreamingHandler("nats://localhost:4222", "test-cluster", testCounters)
 	if err != nil {
 		t.Error(err)
 	}
-	cr.handler = nh
 	defer nh.Close()
 
 	go func() {
-		cr.Serve("tcp", 6868)
+		serve(nh, testCounters, 6868, 6869)
 	}()
+
+	// allow time for startup
+	time.Sleep(100 * time.Millisecond)
 
 	endpoint := "127.0.0.1:6868"
 	producerContext := context.WithValue(context.Background(), "prox_test", "producer")
@@ -45,10 +43,10 @@ func TestCounterNatsStreaming(t *testing.T) {
 		topic,
 	)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
-	sinkCounter := nh.counters.SinkMessagesCounter.WithLabelValues(topic)
+	sinkCounter := testCounters.SinkMessagesCounter.WithLabelValues(topic)
 	metric := &dto.Metric{}
 	sinkCounter.Write(metric)
 	if *metric.Counter.Value != 0.0 {

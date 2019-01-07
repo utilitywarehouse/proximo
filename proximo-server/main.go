@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -57,10 +56,6 @@ func main() {
 		EnvVar: "PROXIMO_PROBE_PORT",
 	})
 	counters := NewCounters()
-	cr := &CommandReceiver{
-		counters: counters,
-	}
-	var closer io.Closer
 	app.Command("kafka", "Use kafka backend", func(cmd *cli.Cmd) {
 		brokers := *cmd.Strings(cli.StringsOpt{
 			Name: "brokers",
@@ -71,9 +66,12 @@ func main() {
 			EnvVar: "PROXIMO_KAFKA_BROKERS",
 		})
 		cmd.Action = func() {
-			cr.handler = &kafkaHandler{
+			handler := &kafkaHandler{
 				brokers:  brokers,
 				counters: counters,
+			}
+			if err := serve(handler, counters, *port, *probePort); err != nil {
+				log.Fatal(err)
 			}
 		}
 	})
@@ -85,8 +83,11 @@ func main() {
 			EnvVar: "PROXIMO_AMQP_ADDRESS",
 		})
 		cmd.Action = func() {
-			cr.handler = &amqpHandler{
+			handler := &amqpHandler{
 				address: *address,
+			}
+			if err := serve(handler, counters, *port, *probePort); err != nil {
+				log.Fatal(err)
 			}
 		}
 	})
@@ -108,42 +109,36 @@ func main() {
 			if err != nil {
 				log.Panic(err)
 			}
-			cr.handler = nh
-			closer = nh
+			handler := nh
+			if err := serve(handler, counters, *port, *probePort); err != nil {
+				log.Fatal(err)
+			}
+			if err := nh.Close(); err != nil {
+				log.Printf("failed to close connection: %s", err.Error())
+			}
 		}
 	})
 
 	app.Command("mem", "Use in-memory testing backend", func(cmd *cli.Cmd) {
 		cmd.Action = func() {
-			cr.handler = newMemHandler()
+			handler := newMemHandler()
+			if err := serve(handler, counters, *port, *probePort); err != nil {
+				log.Fatal(err)
+			}
 		}
 	})
 
-	app.After = func() {
-		cr.ServeStatus(*probePort)
-		if err := cr.Serve("tcp", *port); err != nil {
-			log.Fatal(err)
-		}
-		if closer != nil {
-			if err := closer.Close(); err != nil {
-				log.Printf("failed to close connection: %s", err.Error())
-			}
-		}
-	}
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal("App stopped with error")
 	}
 }
 
-type CommandReceiver struct {
-	handler  handler
-	counters counters
-}
+func serve(handler handler, counters counters, port int, probePort int) error {
+	serveStatus(handler, probePort)
 
-func (r *CommandReceiver) Serve(connType string, port int) error {
-	lis, err := net.Listen(connType, fmt.Sprintf(":%d", port))
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		errors.Wrap(err, "failed to listen")
+		return errors.Wrap(err, "failed to listen")
 	}
 	opts := []grpc.ServerOption{
 		grpc.KeepaliveParams(keepalive.ServerParameters{
@@ -151,19 +146,19 @@ func (r *CommandReceiver) Serve(connType string, port int) error {
 		}),
 	}
 	grpcServer := grpc.NewServer(opts...)
-	RegisterMessageSourceServer(grpcServer, &server{r.handler, r.counters})
-	RegisterMessageSinkServer(grpcServer, &server{r.handler, r.counters})
+	RegisterMessageSourceServer(grpcServer, &server{handler, counters})
+	RegisterMessageSinkServer(grpcServer, &server{handler, counters})
 	if err := grpcServer.Serve(lis); err != nil {
 		return errors.Wrap(err, "failed to serve grpc")
 	}
 	return nil
 }
 
-func (r *CommandReceiver) ServeStatus(port int) {
+func serveStatus(handler handler, port int) {
 	router := mux.NewRouter()
 
 	probe := router.PathPrefix("/__/").Subrouter()
-	probe.Methods(http.MethodGet).Handler(op.NewHandler(getOpStatus(r.handler)))
+	probe.Methods(http.MethodGet).Handler(op.NewHandler(getOpStatus(handler)))
 
 	server := http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
