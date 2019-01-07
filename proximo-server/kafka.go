@@ -16,6 +16,7 @@ import (
 
 type kafkaHandler struct {
 	brokers  []string
+	version  *sarama.KafkaVersion
 	counters counters
 }
 
@@ -29,6 +30,9 @@ func (h *kafkaHandler) HandleConsume(ctx context.Context, conf consumerConfig, f
 	config.Consumer.Return.Errors = true
 	config.Consumer.Offsets.Initial = sarama.OffsetOldest
 	config.Metadata.RefreshFrequency = 30 * time.Second
+	if h.version != nil {
+		config.Version = *h.version
+	}
 
 	c, err := cluster.NewConsumer(h.brokers, conf.consumer, []string{conf.topic}, config)
 	if err != nil {
