@@ -6,10 +6,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/Shopify/sarama"
 	"github.com/gorilla/mux"
-	"github.com/jawher/mow.cli"
+	cli "github.com/jawher/mow.cli"
 	"github.com/pkg/errors"
 	"github.com/utilitywarehouse/go-operational/op"
 	"google.golang.org/grpc"
@@ -56,6 +58,14 @@ func main() {
 		EnvVar: "PROXIMO_PROBE_PORT",
 	})
 	counters := NewCounters()
+
+	endpoints := app.String(cli.StringOpt{
+		Name:   "endpoints",
+		Value:  "consume,publish",
+		Desc:   "The proximo endpoints to expose (consume, publish)",
+		EnvVar: "PROXIMO_ENDPOINTS",
+	})
+
 	app.Command("kafka", "Use kafka backend", func(cmd *cli.Cmd) {
 		brokers := *cmd.Strings(cli.StringsOpt{
 			Name: "brokers",
@@ -65,12 +75,28 @@ func main() {
 			Desc:   "Broker addresses e.g., \"server1:9092,server2:9092\"",
 			EnvVar: "PROXIMO_KAFKA_BROKERS",
 		})
+		kafkaVersion := cmd.String(cli.StringOpt{
+			Name:   "version",
+			Desc:   "Kafka Version e.g. 1.1.1, 0.10.2.0",
+			EnvVar: "PROXIMO_KAFKA_VERSION",
+		})
+
 		cmd.Action = func() {
+			var version *sarama.KafkaVersion
+			if kafkaVersion != nil && *kafkaVersion != "" {
+				kv, err := sarama.ParseKafkaVersion(*kafkaVersion)
+				if err != nil {
+					log.Fatalf("failed to parse kafka version: %v ", err)
+				}
+				version = &kv
+			}
 			handler := &kafkaHandler{
 				brokers:  brokers,
 				counters: counters,
+				version:  version,
 			}
-			if err := serve(handler, counters, *port, *probePort); err != nil {
+			log.Printf("Using kafka at %s\n", brokers)
+			if err := serve(handler, counters, *port, *probePort, *endpoints); err != nil {
 				log.Fatal(err)
 			}
 		}
@@ -86,7 +112,8 @@ func main() {
 			handler := &amqpHandler{
 				address: *address,
 			}
-			if err := serve(handler, counters, *port, *probePort); err != nil {
+			log.Printf("Using AMQP at %s\n", *address)
+			if err := serve(handler, counters, *port, *probePort, *endpoints); err != nil {
 				log.Fatal(err)
 			}
 		}
@@ -109,8 +136,8 @@ func main() {
 			if err != nil {
 				log.Panic(err)
 			}
-			handler := nh
-			if err := serve(handler, counters, *port, *probePort); err != nil {
+			log.Printf("Using NATS streaming server at %s with cluster id %s\n", *url, *cid)
+			if err := serve(nh, counters, *port, *probePort, *endpoints); err != nil {
 				log.Fatal(err)
 			}
 		}
@@ -119,7 +146,8 @@ func main() {
 	app.Command("mem", "Use in-memory testing backend", func(cmd *cli.Cmd) {
 		cmd.Action = func() {
 			handler := newMemHandler()
-			if err := serve(handler, counters, *port, *probePort); err != nil {
+			log.Printf("Using in memory testing backend")
+			if err := serve(handler, counters, *port, *probePort, *endpoints); err != nil {
 				log.Fatal(err)
 			}
 		}
@@ -130,7 +158,7 @@ func main() {
 	}
 }
 
-func serve(handler handler, counters counters, port int, probePort int) error {
+func serve(handler handler, counters counters, port int, probePort int, endpoints string) error {
 	serveStatus(handler, probePort)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
@@ -143,8 +171,7 @@ func serve(handler handler, counters counters, port int, probePort int) error {
 		}),
 	}
 	grpcServer := grpc.NewServer(opts...)
-	RegisterMessageSourceServer(grpcServer, &server{handler, counters})
-	RegisterMessageSinkServer(grpcServer, &server{handler, counters})
+	registerGRPCServers(grpcServer, &server{handler, counters}, endpoints)
 	if err := grpcServer.Serve(lis); err != nil {
 		return errors.Wrap(err, "failed to serve grpc")
 	}
@@ -166,4 +193,17 @@ func serveStatus(handler handler, port int) {
 			log.Fatal(errors.Wrap(err, "failed to server status"))
 		}
 	}()
+}
+
+func registerGRPCServers(grpcServer *grpc.Server, proximoServer *server, endpoints string) {
+	for _, endpoint := range strings.Split(endpoints, ",") {
+		switch endpoint {
+		case "consume":
+			RegisterMessageSourceServer(grpcServer, proximoServer)
+		case "publish":
+			RegisterMessageSinkServer(grpcServer, proximoServer)
+		default:
+			log.Fatalf("invalid expose-endpoint flag: %s", endpoint)
+		}
+	}
 }

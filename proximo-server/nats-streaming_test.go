@@ -28,7 +28,7 @@ func TestCounterNatsStreaming(t *testing.T) {
 	defer nh.Close()
 
 	go func() {
-		serve(nh, testCounters, 6868, 6869)
+		serve(nh, testCounters, 6868, 6869, "consume,publish")
 	}()
 
 	// allow time for startup
