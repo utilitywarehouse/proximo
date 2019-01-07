@@ -138,7 +138,7 @@ func serve(handler handler, counters counters, port int, probePort int) error {
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		errors.Wrap(err, "failed to listen")
+		return errors.Wrap(err, "failed to listen")
 	}
 	opts := []grpc.ServerOption{
 		grpc.KeepaliveParams(keepalive.ServerParameters{
